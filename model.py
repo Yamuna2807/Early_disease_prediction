@@ -9,159 +9,177 @@ import seaborn as sns
 import streamlit as st
 
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report, confusion_matrix
 
 # ---------------------------------------------------
-# 2. Streamlit App Layout
+# 2. Streamlit Layout
 # ---------------------------------------------------
 st.title("🩺 Disease Prediction Dashboard")
 
-st.sidebar.header("Upload Dataset")
 uploaded_file = st.sidebar.file_uploader("Upload your CSV file", type=["csv"])
 
 if uploaded_file is not None:
-    # Load dataset
+    # -----------------------------------
+    # 3. Load Dataset
+    # -----------------------------------
     data = pd.read_csv(uploaded_file)
-    st.subheader("Dataset Preview")
-    st.write(data.head())
-    st.write("Shape:", data.shape)
 
     # Feature Engineering
     data['age_years'] = (data['age'] / 365).astype(int)
     data['ap_hi'] = data['ap_hi'].clip(80, 250)
     data['ap_lo'] = data['ap_lo'].clip(40, 150)
 
-    # Encode categorical features
-    label_encoders = {}
-    for col in ["country", "occupation"]:
-        le = LabelEncoder()
-        data[col] = le.fit_transform(data[col])
-        label_encoders[col] = le
+    # Drop unnecessary columns (as in your code)
+    data = data.drop(["date", "id", "age", "occupation", "country"], axis=1, errors="ignore")
 
-    # Drop unused columns
-    data = data.drop(["date", "id"], axis=1)
+    st.subheader("Dataset Preview")
+    st.write(data.head())
+    st.write("Shape:", data.shape)
 
-    # Features & Target
+    # -----------------------------------
+    # 4. Features & Target
+    # -----------------------------------
     X = data.drop("disease", axis=1)
     y = data["disease"]
+    feature_names = X.columns.tolist()   # save feature order for prediction
 
-    # Train-test split
+    # Train-Test Split
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    # Standardization
+    # Scaling for Logistic Regression & KNN
     scaler = StandardScaler()
-    X_train = scaler.fit_transform(X_train)
-    X_test = scaler.transform(X_test)
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
 
     # -----------------------------------
-    # 4. Train Models
+    # 5. Train Models
+    # -----------------------------------
+    dt_model = DecisionTreeClassifier(random_state=42, max_depth=10)
+    dt_model.fit(X_train, y_train)
+
+    log_model = LogisticRegression(max_iter=2000, random_state=42)
+    log_model.fit(X_train_scaled, y_train)
+
+    knn_model = KNeighborsClassifier(n_neighbors=5)
+    knn_model.fit(X_train_scaled, y_train)
+
+    # -----------------------------------
+    # 6. Evaluation Results
     # -----------------------------------
     models = {
-        "Decision Tree": DecisionTreeClassifier(random_state=42, max_depth=10),
-        "Logistic Regression": LogisticRegression(max_iter=1000, random_state=42),
-        "KNN": KNeighborsClassifier(n_neighbors=5)
+        "Decision Tree": (dt_model, X_test, y_test),
+        "Logistic Regression": (log_model, X_test_scaled, y_test),
+        "KNN": (knn_model, X_test_scaled, y_test)
     }
 
+    st.subheader("🔹 Model Evaluation Results")
     results = {}
 
-    for name, model in models.items():
-        model.fit(X_train, y_train)
-        y_pred = model.predict(X_test)
-    
-        acc = accuracy_score(y_test, y_pred)
+    for name, (model, X_eval, y_eval) in models.items():
+        y_pred = model.predict(X_eval)
+        acc = accuracy_score(y_eval, y_pred)
         results[name] = acc
-    
-        st.subheader(f"🔹 {name} Results")
-        st.write(f"**Accuracy:** {acc*100:.2f}%")
-        st.text("Classification Report:")
-        st.text(classification_report(y_test, y_pred))
-    
-        # Confusion Matrix Plot
+
+        st.write(f"**{name}**")
+        st.write(f"Accuracy: {acc*100:.2f}%")
+        st.text(classification_report(y_eval, y_pred))
+
         fig, ax = plt.subplots()
-        sns.heatmap(confusion_matrix(y_test, y_pred), annot=True, fmt="d", cmap="Blues", ax=ax)
+        sns.heatmap(confusion_matrix(y_eval, y_pred), annot=True, fmt="d", cmap="Blues", ax=ax)
         ax.set_title(f"{name} Confusion Matrix")
         st.pyplot(fig)
 
     # -----------------------------------
-    # 5. Comparison Chart
+    # 7. Accuracy Comparison
     # -----------------------------------
     st.subheader("📊 Model Accuracy Comparison")
     fig, ax = plt.subplots()
-    ax.bar(results.keys(), results.values(), color=["blue", "green", "orange"])
+    ax.bar(results.keys(), results.values(), color=["skyblue","lightgreen","lightcoral"])
     ax.set_ylabel("Accuracy")
     ax.set_ylim(0, 1)
     st.pyplot(fig)
 
-    # ---------------------------------------------------
-    # 6. User Input for Disease Prediction
-    # ---------------------------------------------------
+    # -----------------------------------
+    # 8. Prediction from User Input
+    # -----------------------------------
     st.subheader("📝 Predict Disease for a New Patient")
 
     with st.form("prediction_form"):
-        age = st.number_input("Age (days)", min_value=0, max_value=150*365, value=365*30)
-        gender = st.selectbox("Gender", options=[0, 1])  # Assuming 0 = Female, 1 = Male
+        # collect inputs for the features (based on your dataset)
+        age_days = st.number_input("Age (days)", min_value=0, max_value=150*365, value=365*30)
+        gender = st.selectbox("Gender (0=Female,1=Male)", [0,1])
         height = st.number_input("Height (cm)", min_value=50, max_value=250, value=170)
         weight = st.number_input("Weight (kg)", min_value=20, max_value=200, value=70)
         ap_hi = st.number_input("Systolic BP (ap_hi)", min_value=80, max_value=250, value=120)
         ap_lo = st.number_input("Diastolic BP (ap_lo)", min_value=40, max_value=150, value=80)
-        cholesterol = st.selectbox("Cholesterol (1=Normal,2=Above Normal,3=High)", options=[1,2,3])
-        gluc = st.selectbox("Glucose (1=Normal,2=Above Normal,3=High)", options=[1,2,3])
-        smoke = st.selectbox("Smoke (0=No,1=Yes)", options=[0,1])
-        alco = st.selectbox("Alcohol (0=No,1=Yes)", options=[0,1])
-        active = st.selectbox("Physical Activity (0=No,1=Yes)", options=[0,1])
-        country = st.selectbox("Country", options=list(label_encoders['country'].classes_))
-        occupation = st.selectbox("Occupation", options=list(label_encoders['occupation'].classes_))
-        submitted = st.form_submit_button("Predict Disease")
+        cholesterol = st.selectbox("Cholesterol (1=Normal,2=Above Normal,3=High)", [1,2,3])
+        gluc = st.selectbox("Glucose (1=Normal,2=Above Normal,3=High)", [1,2,3])
+        smoke = st.selectbox("Smoke (0=No,1=Yes)", [0,1])
+        alco = st.selectbox("Alcohol (0=No,1=Yes)", [0,1])
+        active = st.selectbox("Physical Activity (0=No,1=Yes)", [0,1])
+
+        submitted = st.form_submit_button("Predict")
 
         if submitted:
-            # Encode categorical inputs
-            country_val = label_encoders['country'].transform([country])[0]
-            occupation_val = label_encoders['occupation'].transform([occupation])[0]
-            age_years = age // 365
-            ap_hi = np.clip(ap_hi, 80, 250)
-            ap_lo = np.clip(ap_lo, 40, 150)
+            # match training features
+            input_dict = {
+                "gender": gender,
+                "height": height,
+                "weight": weight,
+                "ap_hi": ap_hi,
+                "ap_lo": ap_lo,
+                "cholesterol": cholesterol,
+                "gluc": gluc,
+                "smoke": smoke,
+                "alco": alco,
+                "active": active,
+                "age_years": age_days // 365,
+            }
 
-            # Create input array
-            input_data = np.array([[age_years, gender, height, weight, ap_hi, ap_lo, cholesterol, gluc, smoke, alco, active, country_val, occupation_val]])
-            input_data = scaler.transform(input_data)
+            input_df = pd.DataFrame([input_dict])[feature_names]
 
-            # Predict with the best model (Decision Tree here)
-            prediction = models["Decision Tree"].predict(input_data)[0]
+            # scale for models that need scaling
+            input_scaled = scaler.transform(input_df)
 
-            st.success(f"✅ Predicted Disease Status: {'Disease' if prediction==1 else 'No Disease'}")
+            # predict with all models
+            preds = {
+                "Decision Tree": dt_model.predict(input_df)[0],
+                "Logistic Regression": log_model.predict(input_scaled)[0],
+                "KNN": knn_model.predict(input_scaled)[0]
+            }
 
-    # ---------------------------------------------------
-    # 7. Optional EDA Visualizations
-    # ---------------------------------------------------
+            st.write("### 🔮 Predictions")
+            for model_name, pred in preds.items():
+                st.success(f"{model_name}: {'Disease' if pred==1 else 'No Disease'}")
+
+    # -----------------------------------
+    # 9. Optional EDA
+    # -----------------------------------
     if st.checkbox("Show EDA Visualizations"):
         st.subheader("Disease Distribution")
         fig, ax = plt.subplots()
         sns.countplot(x='disease', data=data, ax=ax)
         st.pyplot(fig)
 
-        for column in ['age_years', 'ap_hi', 'ap_lo', 'height', 'weight']:
-            st.write(f"### Histogram of {column}")
-            fig, ax = plt.subplots(figsize=(6,4))
-            sns.histplot(data=data, x=column, hue="disease", multiple="stack", kde=True, bins=30, ax=ax)
-            ax.set_title(f"{column} Distribution by Disease")
+        for col in ['age_years', 'ap_hi', 'ap_lo', 'height', 'weight']:
+            fig, ax = plt.subplots()
+            sns.histplot(data=data, x=col, hue='disease', multiple='stack', kde=True, bins=30, ax=ax)
+            ax.set_title(f"{col} Distribution by Disease")
             st.pyplot(fig)
 
-        for column in ['age_years', 'ap_hi', 'ap_lo', 'height', 'weight']:    
-            st.write(f"### Boxplot of {column}")
-            fig, ax = plt.subplots(figsize=(6,4))
-            sns.boxplot(data=data, x='disease', y=column, ax=ax)
-            ax.set_title(f"{column} Distribution by Disease")
+        for col in ['age_years', 'ap_hi', 'ap_lo', 'height', 'weight']:
+            fig, ax = plt.subplots()
+            sns.boxplot(data=data, x='disease', y=col, ax=ax)
+            ax.set_title(f"{col} Distribution by Disease")
             st.pyplot(fig)
 
-        st.subheader("Correlation Matrix")
-        num_cols = [col for col in data.columns if data[col].dtype != object]
-        correlation_matrix = data[num_cols].corr()
-        fig, ax = plt.subplots(figsize=(12, 7))
-        sns.heatmap(correlation_matrix.round(2), annot=True, cmap='coolwarm', ax=ax)
+        fig, ax = plt.subplots(figsize=(12,7))
+        correlation_matrix = data.corr()
+        sns.heatmap(correlation_matrix.round(2), annot=True, cmap="coolwarm", ax=ax)
         st.pyplot(fig)
