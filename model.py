@@ -24,7 +24,7 @@ st.write("This app predicts disease likelihood based on health parameters using 
 # -----------------------------------
 # Load dataset
 # -----------------------------------
-data = pd.read_csv("Data_file.csv")
+data = pd.read_csv("heart_disease_data.csv")
 
 # Preprocessing
 df = data.drop(['date', 'country', 'occupation'], axis=1)
@@ -174,3 +174,4 @@ if st.button("Predict Disease"):
         prediction = knn_model.predict(new_data)[0]
 
     st.success(f"Disease Prediction: {'Yes' if prediction==1 else 'No'}")
+
