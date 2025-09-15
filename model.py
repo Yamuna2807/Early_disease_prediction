@@ -134,7 +134,43 @@ if st.button("Predict Disease"):
         "active": active
     }])
 
-    # Same preprocessing
-    new_data['age'] = (new_data['age']/365).astype(int)
+    # Same preprocessing as training
+    new_data['age'] = (new_data['age'] / 365).astype(int)
     new_data['pulse_pressure'] = new_data['ap_hi'] - new_data['ap_lo']
-    new_data['cholesterol'] = new_data['cholesterol'].map({1:'normal', 2:'above_normal', 3:'well_above_normal'_
+    new_data['map'] = new_data['ap_lo'] + (new_data['ap_hi'] - new_data['ap_lo']) / 3
+    new_data['bmi'] = new_data['weight'] / (new_data['height'] ** 2)
+    new_data['sys_dsys_ratio'] = new_data['ap_hi'] / new_data['ap_lo']
+
+    # Map categorical features
+    new_data['cholesterol'] = new_data['cholesterol'].map({
+        1: 'normal',
+        2: 'above_normal',
+        3: 'well_above_normal'
+    })
+    new_data['gluc'] = new_data['gluc'].map({
+        1: 'normal',
+        2: 'above_normal',
+        3: 'well_above_normal'
+    })
+    new_data['smoke'] = new_data['smoke'].map({0: 'non_smoker', 1: 'smoker'})
+    new_data['alco'] = new_data['alco'].map({0: 'non_drinker', 1: 'drinker'})
+    new_data['active'] = new_data['active'].map({0: 'inactive', 1: 'active'})
+
+    # Scale numerical features
+    new_data[num_features] = scaler.transform(new_data[num_features])
+
+    # One-hot encode categorical features
+    new_data = pd.get_dummies(new_data, columns=['cholesterol', 'gluc'])
+
+    # Align new_data with training features (to avoid column mismatch)
+    new_data = new_data.reindex(columns=features.columns, fill_value=0)
+
+    # Prediction using the best model
+    if best_model_name == "Decision Tree":
+        prediction = dt_model.predict(new_data)[0]
+    elif best_model_name == "Logistic Regression":
+        prediction = log_model.predict(new_data)[0]
+    else:  # KNN
+        prediction = knn_model.predict(new_data)[0]
+
+    st.success(f"Disease Prediction: {'Yes' if prediction==1 else 'No'}")
