@@ -13,7 +13,7 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 # -------------------
 # Load & Preprocess Data
 # -------------------
-data = pd.read_csv("Data_file.csv")
+data = pd.read_csv("heart_disease_data.csv")
 
 df = data.drop(['date','country','occupation'],axis=1)
 df['age'] = (df['age']/365).astype(int)
@@ -119,3 +119,4 @@ if st.button("Predict"):
     st.write(f"**Logistic Regression:** {pred_log}")
     st.write(f"**KNN:** {pred_knn}")
     st.success(f"✅ Recommended Model: {best_model_name} → Prediction: {eval(f'pred_{best_model_name.split()[0].lower()}')}")
+
