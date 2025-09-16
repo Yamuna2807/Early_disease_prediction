@@ -1,8 +1,6 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 import os
 
 from sklearn.preprocessing import StandardScaler
@@ -10,15 +8,16 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.metrics import accuracy_score
 
 # -------------------
 # Load & Preprocess Data
 # -------------------
-# Safe path (dataset must be in same folder as model.py)
+# Safe path (dataset must be in same folder as this script)
 file_path = os.path.join(os.path.dirname(__file__), "heart_disease_data.csv")
 data = pd.read_csv(file_path)
 
+# Drop unused columns
 df = data.drop(['date','country','occupation'], axis=1)
 df['age'] = (df['age'] / 365).astype(int)
 df['height'] = df['height'] / 100
@@ -34,12 +33,13 @@ df['gluc'] = df['gluc'].apply(
 )
 df['map'] = df['ap_lo'] + (df['ap_hi'] - df['ap_lo']) / 3
 df['bmi'] = df['weight'] / (df['height'])**2
-df['sys_dsys_ratio'] = df['ap_hi'] / df['ap_lo']
 
-features = df[['age', 'weight', 'cholesterol', 'gluc', 'smoke', 'alco',
-               'pulse_pressure', 'map', 'bmi']]
+# Final feature set (NO unused columns)
+features = df[['age', 'weight', 'cholesterol', 'gluc',
+               'smoke', 'alco', 'pulse_pressure', 'map', 'bmi']]
 target = df['disease']
 
+# Scale numeric features
 num_features = features.select_dtypes(exclude='object').columns
 scaler = StandardScaler()
 features[num_features] = scaler.fit_transform(features[num_features])
@@ -56,25 +56,20 @@ x_train, x_test, y_train, y_test = train_test_split(
 results = {}
 
 # Decision Tree
-dt_model = DecisionTreeClassifier(
-    random_state=42, max_depth=9,
-    min_samples_split=0.01, min_samples_leaf=0.01
-)
+dt_model = DecisionTreeClassifier(random_state=42, max_depth=9,
+                                  min_samples_split=0.01, min_samples_leaf=0.01)
 dt_model.fit(x_train, y_train)
-y_pred_dt = dt_model.predict(x_test)
-results["Decision Tree"] = accuracy_score(y_test, y_pred_dt) * 100
+results["Decision Tree"] = accuracy_score(y_test, dt_model.predict(x_test)) * 100
 
 # Logistic Regression
 log_model = LogisticRegression(max_iter=1000, random_state=42)
 log_model.fit(x_train, y_train)
-y_pred_log = log_model.predict(x_test)
-results["Logistic Regression"] = accuracy_score(y_test, y_pred_log) * 100
+results["Logistic Regression"] = accuracy_score(y_test, log_model.predict(x_test)) * 100
 
 # KNN
 knn_model = KNeighborsClassifier(n_neighbors=7)
 knn_model.fit(x_train, y_train)
-y_pred_knn = knn_model.predict(x_test)
-results["KNN"] = accuracy_score(y_test, y_pred_knn) * 100
+results["KNN"] = accuracy_score(y_test, knn_model.predict(x_test)) * 100
 
 # Best model
 best_model_name = max(results, key=results.get)
@@ -109,15 +104,20 @@ smoke = st.radio("Smoking?", [0, 1], format_func=lambda x: "Yes" if x == 1 else 
 alco = st.radio("Alcohol intake?", [0, 1], format_func=lambda x: "Yes" if x == 1 else "No")
 
 if st.button("Predict"):
+    # Build input data
     new_data = pd.DataFrame([{
-        "age": age_days, "height": height_cm, "weight": weight,
-        "ap_hi": ap_hi, "ap_lo": ap_lo, "cholesterol": cholesterol,
-        "gluc": gluc, "smoke": smoke, "alco": alco
+        "age": (age_days / 365),   # keep consistent with training
+        "weight": weight,
+        "ap_hi": ap_hi,
+        "ap_lo": ap_lo,
+        "cholesterol": cholesterol,
+        "gluc": gluc,
+        "smoke": smoke,
+        "alco": alco,
+        "height": height_cm / 100
     }])
 
-    # Feature Engineering for input
-    new_data['age'] = (new_data['age'] / 365).astype(int)
-    new_data['height'] = new_data['height'] / 100
+    # Feature Engineering
     new_data['pulse_pressure'] = new_data['ap_hi'] - new_data['ap_lo']
     new_data['cholesterol'] = new_data['cholesterol'].apply(
         lambda x: 'normal' if x == 1 else ('above_normal' if x == 2 else 'well_above_normal')
@@ -127,19 +127,18 @@ if st.button("Predict"):
     )
     new_data['map'] = new_data['ap_lo'] + (new_data['ap_hi'] - new_data['ap_lo']) / 3
     new_data['bmi'] = new_data['weight'] / (new_data['height'])**2
-    new_data['sys_dsys_ratio'] = new_data['ap_hi'] / new_data['ap_lo']
 
-    # Select same feature columns as training
+    # Select only final features
     new_features = new_data[['age','weight','cholesterol','gluc',
                              'smoke','alco','pulse_pressure','map','bmi']]
 
-    # Scale numeric features
+    # Scale numeric
     new_features[num_features] = scaler.transform(new_features[num_features])
 
-    # One-hot encode categorical
+    # One-hot encode
     new_features = pd.get_dummies(new_features, columns=['cholesterol','gluc'])
 
-    # Align with training feature set
+    # Align with training features
     new_features = new_features.reindex(columns=features.columns, fill_value=0)
 
     # Predictions
@@ -148,11 +147,12 @@ if st.button("Predict"):
     pred_knn = knn_model.predict(new_features)[0]
 
     st.subheader("🔮 Predictions")
-    st.write(f"**Decision Tree:** {pred_dt}")
-    st.write(f"**Logistic Regression:** {pred_log}")
-    st.write(f"**KNN:** {pred_knn}")
+    st.write(f"**Decision Tree:** {'Disease' if pred_dt==1 else 'No Disease'}")
+    st.write(f"**Logistic Regression:** {'Disease' if pred_log==1 else 'No Disease'}")
+    st.write(f"**KNN:** {'Disease' if pred_knn==1 else 'No Disease'}")
 
     # Best model result
     best_var = {"decision": pred_dt, "logistic": pred_log, "knn": pred_knn}
     key = best_model_name.split()[0].lower()
-    st.success(f"✅ Recommended Model: {best_model_name} → Prediction: {best_var[key]}")
+    st.success(f"✅ Recommended Model: {best_model_name} → "
+               f"{'Disease' if best_var[key]==1 else 'No Disease'}")
