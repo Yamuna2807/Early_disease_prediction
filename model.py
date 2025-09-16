@@ -1,123 +1,114 @@
-# -------------------
-# model.py
-# -------------------
-import streamlit as st
+# -----------------------------------
+# Early Disease Prediction App
+# -----------------------------------
+
 import numpy as np
 import pandas as pd
+import streamlit as st
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
-# -------------------
-# Load Data
-# -------------------
-data = pd.read_csv("heart_disease_data.csv")
+# -----------------------------------
+# 1. Title
+# -----------------------------------
+st.title("🩺 Early Disease Prediction using Machine Learning")
 
-# Auto-detect target column (last column of dataset)
-target_col = data.columns[-1]
-st.write("Detected Target Column:", target_col)
+# -----------------------------------
+# 2. Upload Dataset
+# -----------------------------------
+st.sidebar.header("Upload Your CSV File")
+uploaded_file = st.sidebar.file_uploader("Choose a CSV file", type=["csv"])
 
-X = data.drop(target_col, axis=1)
-y = data[target_col]
+if uploaded_file is not None:
+    data = pd.read_csv(uploaded_file)
+    st.subheader("📊 Dataset Preview")
+    st.dataframe(data.head())
 
-# Scale numeric features
-num_features = X.select_dtypes(include=np.number).columns
-scaler = StandardScaler()
-X[num_features] = scaler.fit_transform(X[num_features])
+    # -----------------------------------
+    # 3. EDA (Exploratory Data Analysis)
+    # -----------------------------------
+    st.subheader("🔎 Exploratory Data Analysis")
 
-# One-hot encode categorical features (if any)
-X = pd.get_dummies(X)
+    st.write("**Shape of Dataset:**", data.shape)
+    st.write("**Columns:**", list(data.columns))
 
-# -------------------
-# Train-Test Split
-# -------------------
-x_train, x_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.3, random_state=42
-)
+    # Correlation Heatmap
+    st.write("**Correlation Heatmap**")
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(data.corr(), annot=True, cmap="coolwarm")
+    st.pyplot(plt)
 
-# -------------------
-# Train Models
-# -------------------
-results = {}
+    # Target column
+    target_col = st.sidebar.selectbox("Select Target Column (Disease/No Disease)", data.columns)
 
-# Decision Tree
-dt_model = DecisionTreeClassifier(random_state=42, max_depth=9)
-dt_model.fit(x_train, y_train)
-y_pred_dt = dt_model.predict(x_test)
-results["Decision Tree"] = accuracy_score(y_test, y_pred_dt) * 100
+    # Features and Target
+    X = data.drop(columns=[target_col])
+    y = data[target_col]
 
-# Logistic Regression
-log_model = LogisticRegression(max_iter=1000, random_state=42)
-log_model.fit(x_train, y_train)
-y_pred_log = log_model.predict(x_test)
-results["Logistic Regression"] = accuracy_score(y_test, y_pred_log) * 100
+    # Standardize Features
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
 
-# KNN
-knn_model = KNeighborsClassifier(n_neighbors=7)
-knn_model.fit(x_train, y_train)
-y_pred_knn = knn_model.predict(x_test)
-results["KNN"] = accuracy_score(y_test, y_pred_knn) * 100
+    # Split Data
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_scaled, y, test_size=0.2, random_state=42
+    )
 
-# Best model
-best_model_name = max(results, key=results.get)
-best_accuracy = results[best_model_name]
+    # -----------------------------------
+    # 4. Model Selection
+    # -----------------------------------
+    st.sidebar.subheader("Choose a Model")
+    model_choice = st.sidebar.selectbox("Select Model", ["Logistic Regression", "Decision Tree", "KNN"])
 
-# -------------------
-# Streamlit UI
-# -------------------
-st.title("🩺 Disease Prediction App")
-
-st.subheader("📊 Model Performance")
-for model, acc in results.items():
-    st.write(f"**{model} Accuracy:** {acc:.2f}%")
-st.success(f"✅ Best Model: {best_model_name} ({best_accuracy:.2f}%)")
-
-st.subheader("🔹 Enter Patient Details")
-
-# Collect inputs
-inputs = {}
-for col in X.columns:
-    if col in num_features:
-        inputs[col] = st.number_input(f"{col}", value=0.0)
+    if model_choice == "Logistic Regression":
+        model = LogisticRegression()
+    elif model_choice == "Decision Tree":
+        model = DecisionTreeClassifier()
     else:
-        options = [0, 1]
-        inputs[col] = st.selectbox(f"{col}", options)
+        model = KNeighborsClassifier()
 
-# Predict button
-if st.button("Predict"):
-    new_data = pd.DataFrame([inputs])
-    new_data[num_features] = scaler.transform(new_data[num_features])
-
-    # Ensure columns match training
-    new_data = new_data.reindex(columns=X.columns, fill_value=0)
+    # Train Model
+    model.fit(X_train, y_train)
 
     # Predictions
-    pred_dt = dt_model.predict(new_data)[0]
-    pred_log = log_model.predict(new_data)[0]
-    pred_knn = knn_model.predict(new_data)[0]
+    y_pred = model.predict(X_test)
 
-    # Probabilities
-    proba_dt = dt_model.predict_proba(new_data)[0][1]
-    proba_log = log_model.predict_proba(new_data)[0][1]
-    proba_knn = knn_model.predict_proba(new_data)[0][1]
+    # -----------------------------------
+    # 5. Model Evaluation
+    # -----------------------------------
+    st.subheader("📈 Model Evaluation")
+    st.write("**Accuracy:**", accuracy_score(y_test, y_pred))
+    st.write("**Precision:**", precision_score(y_test, y_pred, average="weighted"))
+    st.write("**Recall:**", recall_score(y_test, y_pred, average="weighted"))
+    st.write("**F1 Score:**", f1_score(y_test, y_pred, average="weighted"))
 
-    # Function to convert 0/1 → human label
-    def label_output(pred):
-        return "No Disease" if pred == 0 else "Disease"
+    # -----------------------------------
+    # 6. User Prediction
+    # -----------------------------------
+    st.subheader("🤖 Predict for a New Person")
 
-    st.subheader("🔮 Predictions")
-    st.write(f"**Decision Tree:** {label_output(pred_dt)} (Risk: {proba_dt*100:.2f}%)")
-    st.write(f"**Logistic Regression:** {label_output(pred_log)} (Risk: {proba_log*100:.2f}%)")
-    st.write(f"**KNN:** {label_output(pred_knn)} (Risk: {proba_knn*100:.2f}%)")
+    # User Inputs
+    user_input = []
+    for col in X.columns:
+        val = st.number_input(f"Enter {col}", value=0.0)
+        user_input.append(val)
 
-    # Best model recommendation
-    best_model_pred = {
-        "Decision Tree": pred_dt,
-        "Logistic Regression": pred_log,
-        "KNN": pred_knn
-    }[best_model_name]
+    if st.button("Predict"):
+        user_data = np.array(user_input).reshape(1, -1)
+        user_data_scaled = scaler.transform(user_data)
+        prediction = model.predict(user_data_scaled)[0]
 
-    st.success(f"✅ Recommended Model: {best_model_name} → Prediction: {label_output(best_model_pred)}")
+        if prediction == 0:
+            st.success("✅ Prediction: No Disease")
+        else:
+            st.error("⚠️ Prediction: Disease Detected")
+
+else:
+    st.info("👈 Please upload a CSV file to start.")
