@@ -1,97 +1,121 @@
-# -----------------------------------
-# model.py - Early Disease Prediction
-# -----------------------------------
-
-import os
-import pandas as pd
-import numpy as np
+# -------------------
+# model.py
+# -------------------
 import streamlit as st
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-from sklearn.model_selection import train_test_split
+import numpy as np
+import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
 
-# -----------------------------------
-# Load Dataset
-# -----------------------------------
-file_path = os.path.join(os.path.dirname(__file__), "heart_disease_data.csv")
-data = pd.read_csv(file_path)
+# -------------------
+# Load Data
+# -------------------
+data = pd.read_csv("heart_disease_data.csv")
 
-st.title("🩺 Early Disease Prediction using Machine Learning")
-st.write("This app predicts the likelihood of **Heart Disease** based on input health data.")
+# Auto-detect target column (last column in dataset)
+target_col = data.columns[-1]
+X = data.drop(target_col, axis=1)
+y = data[target_col]
 
-# Show dataset preview
-if st.checkbox("Show Dataset Preview"):
-    st.dataframe(data.head())
+# Scale numeric features
+num_features = X.select_dtypes(include=np.number).columns
+scaler = StandardScaler()
+X[num_features] = scaler.fit_transform(X[num_features])
 
-# -----------------------------------
-# EDA
-# -----------------------------------
-if st.checkbox("Show EDA (Exploratory Data Analysis)"):
-    st.subheader("Class Distribution")
-    st.bar_chart(data['target'].value_counts())
+# One-hot encode categorical features (if any)
+X = pd.get_dummies(X)
 
-    st.subheader("Correlation Heatmap")
-    fig, ax = plt.subplots(figsize=(10, 6))
-    sns.heatmap(data.corr(), annot=False, cmap="coolwarm", ax=ax)
-    st.pyplot(fig)
-
-# -----------------------------------
-# Features & Target
-# -----------------------------------
-X = data.drop("target", axis=1)
-y = data["target"]
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
+# -------------------
+# Train-Test Split
+# -------------------
+x_train, x_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.3, random_state=42
 )
 
-# Scaling
-scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
+# -------------------
+# Train Models
+# -------------------
+results = {}
 
-# -----------------------------------
-# Train Model (Logistic Regression)
-# -----------------------------------
-model = LogisticRegression(max_iter=1000)
-model.fit(X_train_scaled, y_train)
+# Decision Tree
+dt_model = DecisionTreeClassifier(random_state=42, max_depth=9)
+dt_model.fit(x_train, y_train)
+y_pred_dt = dt_model.predict(x_test)
+results["Decision Tree"] = accuracy_score(y_test, y_pred_dt) * 100
 
-# Evaluate
-y_pred = model.predict(X_test_scaled)
+# Logistic Regression
+log_model = LogisticRegression(max_iter=1000, random_state=42)
+log_model.fit(x_train, y_train)
+y_pred_log = log_model.predict(x_test)
+results["Logistic Regression"] = accuracy_score(y_test, y_pred_log) * 100
+
+# KNN
+knn_model = KNeighborsClassifier(n_neighbors=7)
+knn_model.fit(x_train, y_train)
+y_pred_knn = knn_model.predict(x_test)
+results["KNN"] = accuracy_score(y_test, y_pred_knn) * 100
+
+# Best model
+best_model_name = max(results, key=results.get)
+best_accuracy = results[best_model_name]
+
+# -------------------
+# Streamlit UI
+# -------------------
+st.title("🩺 Disease Prediction App")
 
 st.subheader("📊 Model Performance")
-st.write("Accuracy:", accuracy_score(y_test, y_pred))
-st.write("Precision:", precision_score(y_test, y_pred))
-st.write("Recall:", recall_score(y_test, y_pred))
-st.write("F1 Score:", f1_score(y_test, y_pred))
+for model, acc in results.items():
+    st.write(f"**{model} Accuracy:** {acc:.2f}%")
+st.success(f"✅ Best Model: {best_model_name} ({best_accuracy:.2f}%)")
 
-# -----------------------------------
-# User Input
-# -----------------------------------
-st.sidebar.header("Enter Patient Data")
+st.subheader("🔹 Enter Patient Details")
 
-def user_input_features():
-    values = []
-    for col in X.columns:
-        values.append(st.sidebar.number_input(f"Enter {col}:", float(data[col].min()), float(data[col].max()), float(data[col].mean())))
-    features = pd.DataFrame([values], columns=X.columns)
-    return features
-
-user_data = user_input_features()
-
-# -----------------------------------
-# Prediction
-# -----------------------------------
-if st.button("🔍 Predict"):
-    user_scaled = scaler.transform(user_data)
-    prediction = model.predict(user_scaled)
-    proba = model.predict_proba(user_scaled)[0][1]  # probability of disease
-
-    if prediction[0] == 0:
-        st.success(f"🟢 The model predicts: **No Disease** (Risk: {proba*100:.2f}%)")
+# Collect inputs
+inputs = {}
+for col in X.columns:
+    if col in num_features:
+        inputs[col] = st.number_input(f"{col}", value=0.0)
     else:
-        st.error(f"🔴 The model predicts: **Disease** (Risk: {proba*100:.2f}%)")
+        options = [0, 1]
+        inputs[col] = st.selectbox(f"{col}", options)
+
+# Predict button
+if st.button("Predict"):
+    new_data = pd.DataFrame([inputs])
+    new_data[num_features] = scaler.transform(new_data[num_features])
+
+    # Ensure columns match training
+    new_data = new_data.reindex(columns=X.columns, fill_value=0)
+
+    # Predictions
+    pred_dt = dt_model.predict(new_data)[0]
+    pred_log = log_model.predict(new_data)[0]
+    pred_knn = knn_model.predict(new_data)[0]
+
+    # Probabilities
+    proba_dt = dt_model.predict_proba(new_data)[0][1]
+    proba_log = log_model.predict_proba(new_data)[0][1]
+    proba_knn = knn_model.predict_proba(new_data)[0][1]
+
+    # Function to convert 0/1 → human label
+    def label_output(pred):
+        return "No Disease" if pred == 0 else "Disease"
+
+    st.subheader("🔮 Predictions")
+    st.write(f"**Decision Tree:** {label_output(pred_dt)} (Risk: {proba_dt*100:.2f}%)")
+    st.write(f"**Logistic Regression:** {label_output(pred_log)} (Risk: {proba_log*100:.2f}%)")
+    st.write(f"**KNN:** {label_output(pred_knn)} (Risk: {proba_knn*100:.2f}%)")
+
+    # Best model recommendation
+    best_model_pred = {
+        "Decision Tree": pred_dt,
+        "Logistic Regression": pred_log,
+        "KNN": pred_knn
+    }[best_model_name]
+
+    st.success(f"✅ Recommended Model: {best_model_name} → Prediction: {label_output(best_model_pred)}")
