@@ -16,8 +16,10 @@ from sklearn.metrics import accuracy_score
 # -------------------
 data = pd.read_csv("heart_disease_data.csv")
 
-# Auto-detect target column (last column in dataset)
+# Auto-detect target column (last column of dataset)
 target_col = data.columns[-1]
+st.write("Detected Target Column:", target_col)
+
 X = data.drop(target_col, axis=1)
 y = data[target_col]
 
